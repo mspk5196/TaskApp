@@ -4,14 +4,14 @@ import { GoogleSignin } from '@react-native-google-signin/google-signin';
 const GoogleSignInConfig = () => {
   useEffect(() => {
     GoogleSignin.configure({
-      webClientId: 'YOUR_WEB_CLIENT_ID.apps.googleusercontent.com', // Replace with your Web Client ID
+      webClientId: '687863923474-ol1vbgb1mhfkme2fr2d8du8huqogrtnk.apps.googleusercontent.com', // Replace with your Web Client ID
       offlineAccess: true,
       hostedDomain: '', // Optional: Restrict to specific domain
       forceCodeForRefreshToken: true,
     });
   }, []);
 
-  return null;
+  return null; 
 };
 
 export default GoogleSignInConfig;
