@@ -11,8 +11,10 @@ CREATE TABLE IF NOT EXISTS users (
     owner_id BIGINT NULL,
     is_active BOOLEAN DEFAULT TRUE,
     score INT DEFAULT 0,
+    reports_to BIGINT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (owner_id) REFERENCES users(id)
+    FOREIGN KEY (owner_id) REFERENCES users(id),
+    FOREIGN KEY (reports_to) REFERENCES users(id)
 ) ENGINE=InnoDB;
 
 -- ===============================

@@ -18,9 +18,15 @@ class UserDAO {
   }
 
   static async findOwnedIdentities(ownerId) {
+    // Fetch directly owned (creator/owner) AND assigned roles
     const [rows] = await pool.execute(
-        `SELECT id, name, user_type, subtype FROM users WHERE owner_id = ?`,
-        [ownerId]
+        `SELECT id, name, user_type, subtype FROM users WHERE owner_id = ?
+         UNION
+         SELECT u.id, u.name, u.user_type, u.subtype 
+         FROM users u
+         JOIN user_roles ur ON u.id = ur.role_user_id
+         WHERE ur.owner_user_id = ? AND ur.status = 'ACCEPTED'`,
+        [ownerId, ownerId]
     );
     return rows;
   }

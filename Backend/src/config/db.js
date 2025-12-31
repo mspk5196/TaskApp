@@ -6,6 +6,10 @@ const pool = mysql.createPool({
   user: process.env.DB_USER || 'root',
   password: process.env.DB_PASSWORD,
   database: process.env.DB_NAME || 'taskapp_db',
+  ssl: {
+    rejectUnauthorized: false,
+    ca: process.env.DB_CA_CERT
+  },
   waitForConnections: true,
   connectionLimit: 10,
   queueLimit: 0,

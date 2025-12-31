@@ -21,6 +21,15 @@ class TaskDAO {
           `UPDATE tasks SET status = 'PENDING_ACCEPTANCE' WHERE id = ?`,
           [taskId]
       );
+
+      // Trigger Notification (Mocking a require here or handling via a Service layer would be better, 
+      // but for DAO simplicity we insert directly or rely on Controller. 
+      // Let's rely on Controller to keep DAO pure, BUT existing code calls DAO directly in create task loop.
+      // So we will insert notification here directly.)
+      await pool.execute(
+        `INSERT INTO notifications (user_id, message, reference_id, is_read) VALUES (?, ?, ?, FALSE)`,
+        [assigneeId, `You have been assigned task #${taskId}`, taskId]
+      );
   }
 
   static async updateTaskStatus(taskId, status) {
@@ -78,6 +87,16 @@ class TaskDAO {
           [userId, userId]
      );
      return rows;
+  }
+
+  static async updateOverdueTasks() {
+      await pool.execute(
+          `UPDATE tasks t
+           JOIN task_time_rules ttr ON t.id = ttr.task_id
+           SET t.status = 'OVERDUE'
+           WHERE t.status NOT IN ('COMPLETED', 'CLOSED', 'CANCELLED', 'OVERDUE')
+           AND ttr.end_date < CURDATE()` 
+      );
   }
 }
 

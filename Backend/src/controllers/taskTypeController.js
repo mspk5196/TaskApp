@@ -35,18 +35,47 @@ exports.createTypedTask = async (req, res) => {
             
             // NOTE: We do NOT auto-place on calendar yet. SRS says "Calendar is locked until task acceptance".
             // So we just define the rules.
-        } else if (type === 'FLOATING') {
-            if (!startDate || !endDate) {
-                return res.status(400).json({ error: 'Floating tasks require start and end date' });
+        } else if (type === 'SUBSCRIPTION') {
+            if (!dailyQuotaMinutes) {
+                return res.status(400).json({ error: 'Subscription requires quota (minutes)' });
             }
+            // Treat dailyQuotaMinutes as the TOTAL quota for the subscription
             await TaskDAO.createTaskTimeRules({
-                taskId, startDate, endDate
+                taskId, startDate, endDate: startDate, fixedStartTime: '00:00:00', fixedEndTime: '00:00:00', dailyQuotaMinutes
             });
+        } else if (type === 'BIDDING') {
+             // Update status to PENDING_BIDS so it shows up in a public/pool view
+             await TaskDAO.updateTaskStatus(taskId, 'PENDING_BIDS');
+        } else if (type === 'MEETING') {
+             // Meeting specific logic:
+             // 1. Roles: Assign Chair, Scribe? (MVP: Just standard assignment)
+             // 2. We could auto-create a linked 'Minutes' document or subtask container.
         }
 
         res.status(201).json({ message: 'Task created', id: taskId });
+
+
     } catch (error) {
         console.error(error);
         res.status(500).json({ error: 'Failed to create typed task' });
     }
 };
+
+// Implement Subscription and Bidding as extensions of createTypedTask or new methods
+// We can handle them in the main createTypedTask if we add logic there.
+// Let's UPDATE createTypedTask to handle them.
+
+/*
+        } else if (type === 'SUBSCRIPTION') {
+             if (!dailyQuotaMinutes) {
+                 return res.status(400).json({ error: 'Subscription requires quota (minutes)' });
+             }
+             await TaskDAO.createTaskTimeRules({
+                 taskId, startDate, endDate, dailyQuotaMinutes // treating dailyQuota as Total Quota here
+             });
+        } else if (type === 'BIDDING') {
+             // Bidding: Open to all (or specific group). Status -> PENDING_BIDS
+             await TaskDAO.updateTaskStatus(taskId, 'PENDING_BIDS');
+        }
+*/
+

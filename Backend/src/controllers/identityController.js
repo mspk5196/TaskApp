@@ -3,15 +3,15 @@ const jwtUtils = require('../utils/jwtUtils');
 
 exports.getIdentities = async (req, res) => {
     try {
-        const userId = req.user.id; // This is the ID of the currently logged-in HUMAN
-        
-        // 1. Get owned identities (Roles, Assets)
+        const userId = req.user.id; 
         const owned = await UserDAO.findOwnedIdentities(userId);
         
-        // 2. Also return the self identity (Human)
-        // In a real scenario, we might want to fetch 'self' details again to be sure
+        // Also fetch roles assigned via user_roles table
+        // SQL: SELECT u.* FROM users u JOIN user_roles ur ON u.id = ur.role_user_id WHERE ur.owner_user_id = ? AND ur.status = 'ACCEPTED'
+        // For now, let's keep it simple or assume UserDAO handles it. 
+        // We will update UserDAO.findOwnedIdentities to include these.
+        
         const self = { id: userId, name: req.user.email, user_type: 'HUMAN', subtype: 'Self' }; 
-
         res.status(200).json([self, ...owned]);
     } catch (error) {
         console.error(error);

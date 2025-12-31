@@ -17,6 +17,20 @@ class CalendarSlotDAO {
     return result.insertId;
   }
 
+  static async checkConflict(userId, startTime, endTime) {
+      const [rows] = await pool.execute(
+          `SELECT * FROM calendar_slots 
+           WHERE user_id = ? 
+           AND status = 'RESERVED'
+           AND (
+               (start_time < ? AND end_time > ?) OR
+               (start_time >= ? AND start_time < ?)
+           )`,
+          [userId, endTime, startTime, startTime, endTime]
+      );
+      return rows.length > 0;
+  }
+
   static async findConflicts(userId, startTime, endTime) {
     const [rows] = await pool.execute(
       `SELECT * FROM calendar_slots 

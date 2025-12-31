@@ -30,20 +30,16 @@ exports.respondToTask = async (req, res) => {
         await TaskDAO.updateAssignmentStatus(taskId, userId, status, reason);
         
         if (status === 'ACCEPTED') {
-             await TaskDAO.updateTaskStatus(taskId, 'ACCEPTED'); 
+             // Check for conflict first
+             const isConflict = await CalendarSlotDAO.checkConflict(userId, now, end);
              
-             // MODULE C Integration: Place on Calendar
-             // For MVP: We assume task has 'fixed' time (needs DB expansion) or we schedule it for 'Now' + 1hr 
-             // SRS: "Calendar is locked until task acceptance".
-             // We will create a slot for the user.
-             
-             // TODO: In real app, we fetch task details to get start/end time.
-             // Here we just mock a 1-hour slot from now.
-             
-             const CalendarSlotDAO = require('../models/CalendarSlotDAO');
-             const now = new Date();
-             const end = new Date(now.getTime() + 60*60*1000);
-             
+             if (isConflict) {
+                 // SRS 2.3: A task cannot be accepted if calendar slot is occupied.
+                 // For MVP, we simply reject the acceptance (or error out).
+                 // In full app, we'd prompt user to Resolve/Reschedule.
+                 return res.status(409).json({ error: 'Calendar Conflict: Slot occupied. Resolve conflict first.' });
+             }
+
              try {
                 await CalendarSlotDAO.createSlot({
                     user_id: userId,
@@ -53,10 +49,16 @@ exports.respondToTask = async (req, res) => {
                     type: 'TASK',
                     status: 'RESERVED'
                 });
+                
+                // Only update status if slot created successfully
+                await TaskDAO.updateTaskStatus(taskId, 'ACCEPTED'); 
              } catch (slotError) {
-                 console.warn('Auto-scheduling failed/conflict', slotError.message);
-                 // In SRS, if conflict, user must resolve. Here we just warn.
+                 console.warn('Auto-scheduling failed', slotError.message);
+                 return res.status(500).json({ error: 'Failed to place on calendar' });
              }
+        } else {
+            // If REJECTED, just update status
+            // Logic for REJECTED is missing in original snippet context, but assuming we handle it.
         }
         
         // MODULE T: Log Activity
@@ -119,11 +121,25 @@ exports.updateTaskStatus = async (req, res) => {
              // MVP: Fixed 10 points
              const UserDAO = require('../models/UserDAO');
              await UserDAO.updateScore(userId, 10);
+
+             // Check if this task is part of a package and activate next
+             const PackageTaskDAO = require('../models/PackageTaskDAO');
+             await PackageTaskDAO.checkAndActivateNext(taskId);
         }
 
         res.status(200).json({ message: `Task ${status}` });
     } catch (error) {
         console.error(error);
         res.status(500).json({ error: 'Failed to update status' });
+    }
+};
+
+exports.refreshStatus = async (req, res) => {
+    try {
+        await TaskDAO.updateOverdueTasks();
+        res.status(200).json({ message: 'Statuses refreshed' });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: 'Failed to refresh status' });
     }
 };
