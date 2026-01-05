@@ -1,29 +1,17 @@
 const express = require('express');
 const cors = require('cors');
-const bodyParser = require('body-parser');
 
 const app = express();
-
-// Middleware
 app.use(cors());
-app.use(bodyParser.json());
-app.use(bodyParser.urlencoded({ extended: true }));
+app.use(express.json());
 
-// Routes
-const authRoutes = require('./routes/authRoutes');
-const taskRoutes = require('./routes/taskRoutes');
-const calendarRoutes = require('./routes/calendarRoutes');
-const identityRoutes = require('./routes/identityRoutes');
-const notificationRoutes = require('./routes/notificationRoutes');
-
-app.use('/api/auth', authRoutes);
-app.use('/api/tasks', taskRoutes);
-app.use('/api/notifications', notificationRoutes);
-app.use('/api/calendar', calendarRoutes);
-app.use('/api/identities', identityRoutes);
-
-app.get('/', (req, res) => {
-    res.send('TaskApp Backend is running');
+// Log requests
+app.use((req, res, next) => {
+  console.log(`[${req.method}] ${req.url}`, req.body);
+  next();
 });
+
+app.use('/api/auth', require('./routes/auth'));
+
 
 module.exports = app;

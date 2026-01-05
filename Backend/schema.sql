@@ -8,12 +8,12 @@ CREATE TABLE IF NOT EXISTS users (
     user_type ENUM('HUMAN','ROLE','INFRASTRUCTURE','ACTIVITY') NOT NULL,
     subtype VARCHAR(50) NOT NULL,
     name VARCHAR(255) NOT NULL,
-    owner_id BIGINT NULL,
+    email VARCHAR(255) NULL,
     is_active BOOLEAN DEFAULT TRUE,
     score INT DEFAULT 0,
     reports_to BIGINT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (owner_id) REFERENCES users(id),
+    UNIQUE KEY uniq_users_email (email),
     FOREIGN KEY (reports_to) REFERENCES users(id)
 ) ENGINE=InnoDB;
 
@@ -56,17 +56,30 @@ CREATE TABLE IF NOT EXISTS tasks (
     title VARCHAR(255) NOT NULL,
     description TEXT NOT NULL,
     owner_id BIGINT NOT NULL,
+    creator_id BIGINT NOT NULL,
     score INT DEFAULT 0,
     penalty INT DEFAULT 0,
+    penalty_per_hour INT DEFAULT 0,
     closing_criteria TEXT NOT NULL,
+    start_criteria TEXT NULL,
+    is_mandatory BOOLEAN DEFAULT FALSE,
+    place_requirement VARCHAR(255) NULL,
     status ENUM(
         'CREATED','SENT','PENDING_ACCEPTANCE','ACCEPTED',
         'CALENDAR_PLACED','IN_PROGRESS','PAUSED',
         'COMPLETED','PENDING_APPROVAL','CLOSED',
         'OVERDUE','CANCELLED'
     ) DEFAULT 'CREATED',
+    acknowledged_at TIMESTAMP NULL,
+    accepted_at TIMESTAMP NULL,
+    started_at TIMESTAMP NULL,
+    completed_at TIMESTAMP NULL,
+    closed_at TIMESTAMP NULL,
+    due_date DATE NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (owner_id) REFERENCES users(id),
+    FOREIGN KEY (creator_id) REFERENCES users(id),
     FOREIGN KEY (parent_task_id) REFERENCES tasks(id)
 ) ENGINE=InnoDB;
 
@@ -348,27 +361,21 @@ CREATE TABLE IF NOT EXISTS permissions (
 CREATE TABLE IF NOT EXISTS auth_identities (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     user_id BIGINT NOT NULL,
-    provider ENUM('PASSWORD','GOOGLE','MICROSOFT','GITHUB') NOT NULL,
-    provider_uid VARCHAR(255),
+    -- single row per user: store both password and google identifiers here
     email VARCHAR(255) NOT NULL,
+    password_hash VARCHAR(255) NULL,
+    google_id VARCHAR(255) NULL,
+    is_google BOOLEAN DEFAULT FALSE,
     is_primary BOOLEAN DEFAULT FALSE,
     is_verified BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE KEY uniq_provider_uid (provider, provider_uid),
+    UNIQUE KEY uniq_user_identity (user_id),
+    UNIQUE KEY uniq_google_id (google_id),
+    INDEX idx_auth_email (email),
     FOREIGN KEY (user_id) REFERENCES users(id)
 ) ENGINE=InnoDB;
 
--- ===============================
--- 27. AUTH PASSWORDS
--- ===============================
-CREATE TABLE IF NOT EXISTS auth_passwords (
-    id BIGINT AUTO_INCREMENT PRIMARY KEY,
-    identity_id BIGINT NOT NULL,
-    password_hash VARCHAR(255) NOT NULL,
-    last_changed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    must_change BOOLEAN DEFAULT FALSE,
-    FOREIGN KEY (identity_id) REFERENCES auth_identities(id)
-) ENGINE=InnoDB;
+-- (auth_passwords removed; password_hash moved into auth_identities)
 
 -- ===============================
 -- 28. USER SESSIONS
@@ -461,6 +468,18 @@ CREATE TABLE IF NOT EXISTS security_events (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id)
 ) ENGINE=InnoDB;
+-- ===============================
+-- VIEWS
+-- ===============================
+CREATE OR REPLACE VIEW user_profile AS
+SELECT u.*,
+       ai.email as primary_email,
+       ai.is_verified as email_verified,
+       ai.provider as auth_provider
+FROM users u
+LEFT JOIN auth_identities ai
+  ON ai.user_id = u.id AND ai.is_primary = TRUE;
+
 
 -- ===============================
 -- 34. SYSTEM LOGS
