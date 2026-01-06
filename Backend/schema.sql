@@ -9,11 +9,13 @@ CREATE TABLE IF NOT EXISTS users (
     subtype VARCHAR(50) NOT NULL,
     name VARCHAR(255) NOT NULL,
     email VARCHAR(255) NULL,
+    owner_id BIGINT NULL,
     is_active BOOLEAN DEFAULT TRUE,
     score INT DEFAULT 0,
     reports_to BIGINT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE KEY uniq_users_email (email),
+    FOREIGN KEY (owner_id) REFERENCES users(id),
     FOREIGN KEY (reports_to) REFERENCES users(id)
 ) ENGINE=InnoDB;
 
@@ -445,7 +447,7 @@ CREATE TABLE IF NOT EXISTS login_history (
     user_id BIGINT NOT NULL,
     identity_id BIGINT NOT NULL,
     session_id BIGINT,
-    login_method ENUM('PASSWORD','GOOGLE','SSO') NOT NULL,
+    login_method ENUM('PASSWORD','GOOGLE') NOT NULL,
     status ENUM('SUCCESS','FAILURE') NOT NULL,
     failure_reason VARCHAR(255),
     ip_address VARCHAR(45),
@@ -474,8 +476,8 @@ CREATE TABLE IF NOT EXISTS security_events (
 CREATE OR REPLACE VIEW user_profile AS
 SELECT u.*,
        ai.email as primary_email,
-       ai.is_verified as email_verified,
-       ai.provider as auth_provider
+    ai.is_verified as email_verified,
+    CASE WHEN ai.is_google THEN 'GOOGLE' ELSE 'PASSWORD' END as auth_provider
 FROM users u
 LEFT JOIN auth_identities ai
   ON ai.user_id = u.id AND ai.is_primary = TRUE;
@@ -492,5 +494,29 @@ CREATE TABLE IF NOT EXISTS system_logs (
     context JSON,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
+
+-- ===============================
+-- SAMPLE DATA (INITIAL ADMIN USER)
+-- ===============================
+
+-- Human user: Pranesh
+INSERT INTO users (id, user_type, subtype, name, email, is_active, score, reports_to, created_at)
+VALUES
+    (1, 'HUMAN', 'ADMIN', 'Pranesh', 'praneshkarthims@gmail.com', TRUE, 0, NULL, CURRENT_TIMESTAMP);
+
+-- Role user: Admin role entity
+INSERT INTO users (id, user_type, subtype, name, email, is_active, score, reports_to, created_at)
+VALUES
+    (2, 'ROLE', 'ADMIN', 'Administrator Role', NULL, TRUE, 0, NULL, CURRENT_TIMESTAMP);
+
+-- Auth identity for Pranesh (password: 123 -> replace with real hash in production)
+INSERT INTO auth_identities (id, user_id, email, password_hash, google_id, is_google, is_primary, is_verified, created_at)
+VALUES
+    (1, 1, 'praneshkarthims@gmail.com', 'CHANGE_ME_HASH_OF_123', NULL, FALSE, TRUE, TRUE, CURRENT_TIMESTAMP);
+
+-- Map admin role to Pranesh
+INSERT INTO user_roles (id, role_user_id, owner_user_id, status, assigned_at, accepted_at)
+VALUES
+    (1, 2, 1, 'ACCEPTED', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
 
 SET FOREIGN_KEY_CHECKS = 1;

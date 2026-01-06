@@ -1,11 +1,13 @@
 import React from 'react';
 import { AuthProvider } from './src/context/AuthContext';
-import AppNavigator from './src/navigation/AppNavigator';
+import GoogleSignInConfig from './src/config/GoogleSignInConfig';
+import RootNavigator from './src/navigation/RootNavigator';
 
 const App = () => {
   return (
     <AuthProvider>
-      <AppNavigator />
+      <GoogleSignInConfig />
+      <RootNavigator />
     </AuthProvider>
   );
 };

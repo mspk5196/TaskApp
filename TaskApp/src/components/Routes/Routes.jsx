@@ -3,7 +3,7 @@ import { NavigationContainer, useNavigationState } from '@react-navigation/nativ
 import AuthLoader from './AuthLoader';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import Welcome from '../../pages/Auth/Welcome/Welcome';
-import Login from '../../pages/Auth/Login/Login';
+import Login from '../../screens/auth/LoginScreen';
 import Redirect from '../Redirect/Redirect';
 import AdminRoutes from './AdminRoutes';
 import CoordinatorRoutes from './CoordinatorRoutes';
@@ -27,10 +27,6 @@ const Routes = () => {
                 <Stack.Screen name="Redirect" component={Redirect}/>
 
                 {/* Role-specific Routes */}
-                <Stack.Screen name="AdminRoutes" component={AdminRoutes} />
-                <Stack.Screen name="CoordinatorRoutes" component={CoordinatorRoutes} />
-                <Stack.Screen name="MentorRoutes" component={MentorRoutes} />
-                <Stack.Screen name="ParentRoutes" component={ParentRoutes} />
 
             </Stack.Navigator>
         </NavigationContainer>

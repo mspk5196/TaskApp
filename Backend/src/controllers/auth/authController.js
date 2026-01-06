@@ -1,58 +1,149 @@
 const bcrypt = require('bcryptjs');
 const db = require('../../config/db');
 const { generateToken, generateRefreshToken, verifyRefreshToken } = require('../../middleware/auth');
-const { decryptAES, encryptAES } = require('../../utils/decryptAES');
 
-// User Login
+// Helper: load user + primary auth identity + accepted roles by email
+async function getUserWithIdentityByEmail(email) {
+  const sql = `
+    SELECT
+      u.id,
+      u.name,
+      u.email,
+      u.user_type,
+      u.subtype,
+      ai.id AS identity_id,
+      ai.password_hash,
+      GROUP_CONCAT(DISTINCT r.subtype SEPARATOR ',') AS roles
+    FROM users u
+    JOIN auth_identities ai
+      ON ai.user_id = u.id AND ai.is_primary = TRUE
+    LEFT JOIN user_roles ur
+      ON ur.owner_user_id = u.id AND ur.status = 'ACCEPTED'
+    LEFT JOIN users r
+      ON r.id = ur.role_user_id
+    WHERE ai.email = ?
+    GROUP BY u.id, ai.id;
+  `;
+
+  const [rows] = await db.query(sql, [email]);
+  if (!rows || rows.length === 0) return null;
+  return rows[0];
+}
+
+// Helper: load user + identity + roles by user id
+async function getUserWithIdentityById(userId) {
+  const sql = `
+    SELECT
+      u.id,
+      u.name,
+      u.email,
+      u.user_type,
+      u.subtype,
+      ai.id AS identity_id,
+      GROUP_CONCAT(DISTINCT r.subtype SEPARATOR ',') AS roles
+    FROM users u
+    JOIN auth_identities ai
+      ON ai.user_id = u.id AND ai.is_primary = TRUE
+    LEFT JOIN user_roles ur
+      ON ur.owner_user_id = u.id AND ur.status = 'ACCEPTED'
+    LEFT JOIN users r
+      ON r.id = ur.role_user_id
+    WHERE u.id = ?
+    GROUP BY u.id, ai.id;
+  `;
+
+  const [rows] = await db.query(sql, [userId]);
+  if (!rows || rows.length === 0) return null;
+  return rows[0];
+}
+
 exports.login = async (req, res) => {
-  const { phoneNumber, password } = req.body;
-
-  const query = `SELECT u.*, GROUP_CONCAT(DISTINCT r.role SEPARATOR ', ') AS roles
-                 FROM Users u
-                 JOIN user_roles ur ON ur.user_id = u.id AND ur.is_active = 1
-                 JOIN roles r ON  r.id = ur.role_id
-                 WHERE phone = ?
-                 GROUP BY u.id;`;
+  const { phoneNumber, password } = req.body; // phoneNumber is treated as identifier (email) per current schema
 
   try {
-  // Using mysql2/promise pool directly (db.query already returns a promise)
-  const [results] = await db.query(query, [phoneNumber]);
-    if (!results || results.length === 0) return res.status(401).json({ success: false, message: 'Invalid phone number or password' });
-
-    const user = results[0];
-
-    if (!(user.roles.includes('Admin') && user.password_hash == '123456789')) {
-      const decryptedPassword = decryptAES(user.password_hash);
-      const passwordMatch = await bcrypt.compare(password, decryptedPassword);
-      if (!passwordMatch) {
-        return res.status(401).json({ success: false, message: 'Incorrect password' });
-      }
-    } else {
-      console.log('Admin login without password check');
+    const user = await getUserWithIdentityByEmail(phoneNumber);
+    if (!user) {
+      return res.status(401).json({ success: false, message: 'Invalid email or password' });
     }
 
+    if (!user.password_hash) {
+      return res.status(401).json({ success: false, message: 'Password not set for this account' });
+    }
+
+    const passwordMatch = await bcrypt.compare(password, user.password_hash);
+    if (!passwordMatch) {
+      return res.status(401).json({ success: false, message: 'Incorrect password' });
+    }
+
+    const roles = user.roles || '';
     const tokenPayload = {
       id: user.id,
       name: user.name,
-      phone: user.phone,
-      role: user.roles,
+      phone: null,
+      role: roles,
       email: user.email
     };
 
     const accessToken = generateToken(tokenPayload);
     const refreshToken = generateRefreshToken({ userId: user.id });
 
-    // Store refresh token (best-effort)
+    const ipAddress = req.ip;
+    const userAgent = req.headers['user-agent'] || null;
+
+    // Create a user session
+    let sessionId = null;
     try {
-      const storeTokenSql = 'INSERT INTO refresh_tokens (user_id, token, expires_at) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 7 DAY))';
-  await db.query(storeTokenSql, [user.id, refreshToken]);
+      const insertSessionSql = `
+        INSERT INTO user_sessions
+          (user_id, identity_id, device_type, device_id, ip_address, user_agent, login_at, logout_at, is_active)
+        VALUES (?, ?, ?, ?, ?, ?, NOW(), NULL, TRUE);
+      `;
+      const [sessionResult] = await db.query(insertSessionSql, [
+        user.id,
+        user.identity_id,
+        null,
+        null,
+        ipAddress,
+        userAgent
+      ]);
+      sessionId = sessionResult.insertId;
     } catch (e) {
-      console.error('Error storing refresh token:', e);
+      console.error('Error creating user session:', e);
     }
 
+    // Store refresh token in auth_tokens (best-effort)
     try {
-      const loginHistorySql = 'INSERT INTO login_history (user_id, login_type, login_ip, login_at) VALUES (?, ?, ?, NOW())';
-  await db.query(loginHistorySql, [user.id, 'Password', req.ip]);
+      if (sessionId) {
+        const storeTokenSql = `
+          INSERT INTO auth_tokens
+            (user_id, session_id, token_type, token_hash, expires_at, revoked, created_at)
+          VALUES (?, ?, 'REFRESH', ?, DATE_ADD(NOW(), INTERVAL 7 DAY), FALSE, NOW());
+        `;
+        await db.query(storeTokenSql, [user.id, sessionId, refreshToken]);
+      }
+    } catch (e) {
+      console.error('Error storing refresh token in auth_tokens:', e);
+    }
+
+    // Login history (best-effort)
+    try {
+      if (sessionId) {
+        const loginHistorySql = `
+          INSERT INTO login_history
+            (user_id, identity_id, session_id, login_method, status, failure_reason, ip_address, user_agent, occurred_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW());
+        `;
+        await db.query(loginHistorySql, [
+          user.id,
+          user.identity_id,
+          sessionId,
+          'PASSWORD',
+          'SUCCESS',
+          null,
+          ipAddress,
+          userAgent
+        ]);
+      }
     } catch (e) {
       console.error('Error storing login history:', e);
     }
@@ -64,12 +155,12 @@ exports.login = async (req, res) => {
         user: {
           id: user.id,
           name: user.name,
-          phone: user.phone,
-          role: user.roles,
+          phone: null,
+          role: roles,
           email: user.email
         },
-        accessToken: accessToken,
-        refreshToken: refreshToken
+        accessToken,
+        refreshToken
       }
     });
   } catch (err) {
@@ -99,23 +190,39 @@ exports.refreshToken = async (req, res) => {
       });
     }
 
-    // Check if refresh token exists in database
-    const checkTokenSql = 'SELECT * FROM refresh_tokens WHERE token = ? AND user_id = ? AND expires_at > NOW()';
+    // Check if refresh token exists and is valid in auth_tokens
+    const checkTokenSql = `
+      SELECT *
+      FROM auth_tokens
+      WHERE token_type = 'REFRESH'
+        AND token_hash = ?
+        AND user_id = ?
+        AND revoked = FALSE
+        AND expires_at > NOW()
+      LIMIT 1;
+    `;
     try {
-  const [results] = await db.query(checkTokenSql, [refreshToken, decoded.userId]);
+      const [results] = await db.query(checkTokenSql, [refreshToken, decoded.userId]);
       if (!results || results.length === 0) {
         return res.status(403).json({ success: false, message: 'Invalid or expired refresh token' });
       }
 
-      // Get user details
-      const getUserSql = 'SELECT * FROM users WHERE id = ?';
-  const [userResults] = await db.query(getUserSql, [decoded.userId]);
-      if (!userResults || userResults.length === 0) {
+      const tokenRow = results[0];
+
+      // Load user + roles
+      const user = await getUserWithIdentityById(decoded.userId);
+      if (!user) {
         return res.status(500).json({ success: false, message: 'User not found' });
       }
 
-      const user = userResults[0];
-      const tokenPayload = { id: user.id, name: user.name, phone: user.phone, role: user.role, email: user.email };
+      const roles = user.roles || '';
+      const tokenPayload = {
+        id: user.id,
+        name: user.name,
+        phone: null,
+        role: roles,
+        email: user.email
+      };
       const accessToken = generateToken(tokenPayload);
       return res.json({ success: true, data: { accessToken } });
     } catch (err) {
@@ -138,12 +245,33 @@ exports.logout = async (req, res) => {
     const { refreshToken } = req.body;
 
     if (refreshToken) {
-      // Remove refresh token from database
-      const deleteTokenSql = 'DELETE FROM refresh_tokens WHERE token = ?';
       try {
-  await db.query(deleteTokenSql, [refreshToken]);
+        const decoded = verifyRefreshToken(refreshToken);
+        if (decoded) {
+          // Find matching auth_tokens rows
+          const [tokens] = await db.query(
+            `SELECT * FROM auth_tokens WHERE token_type = 'REFRESH' AND token_hash = ? AND user_id = ?`,
+            [refreshToken, decoded.userId]
+          );
+
+          // Revoke tokens and close sessions (best-effort)
+          for (const t of tokens) {
+            try {
+              await db.query(
+                `UPDATE auth_tokens SET revoked = TRUE WHERE id = ?`,
+                [t.id]
+              );
+              await db.query(
+                `UPDATE user_sessions SET is_active = FALSE, logout_at = NOW() WHERE id = ?`,
+                [t.session_id]
+              );
+            } catch (e) {
+              console.error('Error revoking token or closing session:', e);
+            }
+          }
+        }
       } catch (e) {
-        console.error('Error deleting refresh token:', e);
+        console.error('Error processing logout token:', e);
       }
     }
 
@@ -165,40 +293,100 @@ exports.logout = async (req, res) => {
 exports.googleLogin = async (req, res) => {
   const { email } = req.body;
 
-  const query = `SELECT u.*, GROUP_CONCAT(DISTINCT r.role SEPARATOR ', ') AS roles
-                 FROM Users u
-                 JOIN user_roles ur ON ur.user_id =  u.id
-                 JOIN roles r ON  r.id = ur.role_id
-                 WHERE email = ?
-                 GROUP BY u.id;`;
-
   try {
-  const [results] = await db.query(query, [email]);
-    if (!results || results.length === 0) {
+    const user = await getUserWithIdentityByEmail(email);
+    if (!user) {
       return res.json({ success: false, message: 'User does not exist. Please contact owner.' });
     }
 
-    const user = results[0];
-    const tokenPayload = { id: user.id, name: user.name, phone: user.phone, role: user.roles, email: user.email };
+    const roles = user.roles || '';
+    const tokenPayload = {
+      id: user.id,
+      name: user.name,
+      phone: null,
+      role: roles,
+      email: user.email
+    };
 
     const accessToken = generateToken(tokenPayload);
     const refreshToken = generateRefreshToken({ userId: user.id });
 
+    const ipAddress = req.ip;
+    const userAgent = req.headers['user-agent'] || null;
+
+    // Create user session
+    let sessionId = null;
     try {
-      const storeTokenSql = 'INSERT INTO refresh_tokens (user_id, token, expires_at) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 7 DAY))';
-  await db.query(storeTokenSql, [user.id, refreshToken]);
+      const insertSessionSql = `
+        INSERT INTO user_sessions
+          (user_id, identity_id, device_type, device_id, ip_address, user_agent, login_at, logout_at, is_active)
+        VALUES (?, ?, ?, ?, ?, ?, NOW(), NULL, TRUE);
+      `;
+      const [sessionResult] = await db.query(insertSessionSql, [
+        user.id,
+        user.identity_id,
+        null,
+        null,
+        ipAddress,
+        userAgent
+      ]);
+      sessionId = sessionResult.insertId;
     } catch (e) {
-      console.error('Error storing refresh token:', e);
+      console.error('Error creating user session (Google):', e);
     }
 
+    // Store refresh token
     try {
-      const loginHistorySql = 'INSERT INTO login_history (user_id, login_type, login_ip, login_at) VALUES (?, ?, ?, NOW())';
-  await db.query(loginHistorySql, [user.id, 'Google', req.ip]);
+      if (sessionId) {
+        const storeTokenSql = `
+          INSERT INTO auth_tokens
+            (user_id, session_id, token_type, token_hash, expires_at, revoked, created_at)
+          VALUES (?, ?, 'REFRESH', ?, DATE_ADD(NOW(), INTERVAL 7 DAY), FALSE, NOW());
+        `;
+        await db.query(storeTokenSql, [user.id, sessionId, refreshToken]);
+      }
     } catch (e) {
-      console.error('Error storing login history:', e);
+      console.error('Error storing refresh token (Google):', e);
     }
 
-    return res.json({ success: true, message: 'Login successful', data: { user: { id: user.id, name: user.name, phone: user.phone, role: user.roles, email: user.email }, accessToken, refreshToken } });
+    // Login history
+    try {
+      if (sessionId) {
+        const loginHistorySql = `
+          INSERT INTO login_history
+            (user_id, identity_id, session_id, login_method, status, failure_reason, ip_address, user_agent, occurred_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW());
+        `;
+        await db.query(loginHistorySql, [
+          user.id,
+          user.identity_id,
+          sessionId,
+          'GOOGLE',
+          'SUCCESS',
+          null,
+          ipAddress,
+          userAgent
+        ]);
+      }
+    } catch (e) {
+      console.error('Error storing login history (Google):', e);
+    }
+
+    return res.json({
+      success: true,
+      message: 'Login successful',
+      data: {
+        user: {
+          id: user.id,
+          name: user.name,
+          phone: null,
+          role: roles,
+          email: user.email
+        },
+        accessToken,
+        refreshToken
+      }
+    });
   } catch (err) {
     console.error('Google login error:', err);
     return res.status(500).json({ success: false, message: 'Server error' });
