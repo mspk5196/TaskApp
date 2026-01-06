@@ -24,10 +24,11 @@ import Separator from '../../assets/Login/separator.svg';
 import Googleicon from '../../assets/Login/google.svg';
 import styles from './loginsty';
 import { GOOGLE_ANDROID_CLIENT_ID } from '../../config/env';
-import ApiService from '../../services/api';
+import useAuth from '../../hooks/useAuth';
 
 const LoginScreen = () => {
   const navigation = useNavigation();
+  const { login, loginWithGoogle } = useAuth();
   const passwordRef = useRef(null);
 
   const [phoneNumber, setPhoneNumber] = useState('');
@@ -50,17 +51,9 @@ const LoginScreen = () => {
     setIsLoading(true);
 
     try {
-      const response = await ApiService.login(phoneNumber, password);
-
-      if (response.success) {
-        await AsyncStorage.setItem('userPhone', response.data.user.phone || '');
-        await AsyncStorage.setItem('userEmail', response.data.user.email || '');
-
-        navigation.navigate('Redirect', {
-          phoneNumber: response.data.user.phone,
-        });
-      } else {
-        Alert.alert('Login Failed', response.message || 'Invalid credentials');
+      const response = await login(phoneNumber, password);
+      if (response?.success) {
+        navigation.navigate('IdentitySelector');
       }
     } catch (error) {
       console.error('Login error:', error);
@@ -94,17 +87,10 @@ const LoginScreen = () => {
 
       if (!googleEmail) throw new Error('No email retrieved from Google.');
 
-      const response = await ApiService.g_login(googleEmail);
+      const response = await loginWithGoogle(googleEmail);
 
-      if (response.success && response.data) {
-        await AsyncStorage.setItem('userPhone', response.data.user.phone || '');
-        await AsyncStorage.setItem('userEmail', response.data.user.email || '');
-
-        navigation.navigate('Redirect', {
-          phoneNumber: response.data.user.phone,
-        });
-      } else {
-        Alert.alert('Login Failed', response.message || 'Google login failed');
+      if (response?.success) {
+        navigation.navigate('IdentitySelector');
       }
     } catch (e) {
       console.error('Google login error:', e);

@@ -7,7 +7,7 @@ import LinearGradient from 'react-native-linear-gradient';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 
 const Welcome = () => { 
-  const navigation = useNavigation(); 
+  const navigation = useNavigation();     
   
   // Animation values
   const fadeAnim = useRef(new Animated.Value(0)).current;

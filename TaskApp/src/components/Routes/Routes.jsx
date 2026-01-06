@@ -2,7 +2,7 @@ import React from 'react';
 import { NavigationContainer, useNavigationState } from '@react-navigation/native';
 import AuthLoader from './AuthLoader';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import Welcome from '../../pages/Auth/Welcome/Welcome';
+import Welcome from '../../screens/auth/Welcome/Welcome';
 import Login from '../../screens/auth/LoginScreen';
 import Redirect from '../Redirect/Redirect';
 import AdminRoutes from './AdminRoutes';

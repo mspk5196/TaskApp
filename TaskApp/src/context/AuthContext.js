@@ -16,6 +16,7 @@ export const AuthProvider = ({ children }) => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [user, setUser] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [currentIdentity, setCurrentIdentity] = useState(null);
 
   useEffect(() => {
     checkAuthStatus();
@@ -52,12 +53,15 @@ export const AuthProvider = ({ children }) => {
       const response = await ApiService.login(email, password);
       if (response.success) {
         setUser(response.data.user);
-        setIsAuthenticated(true);
-
         await AsyncStorage.setItem('userName', response.data.user.name || '');
         await AsyncStorage.setItem('userPhone', response.data.user.phone || '');
         await AsyncStorage.setItem('userEmail', response.data.user.email || '');
-        await AsyncStorage.setItem('userRoles', JSON.stringify((response.data.user.role || '').split(', ')));
+        const rawRoles = response.data.user.role || '';
+        const rolesArray = rawRoles
+          .split(',')
+          .map((r) => r.trim())
+          .filter(Boolean);
+        await AsyncStorage.setItem('userRoles', JSON.stringify(rolesArray));
         await AsyncStorage.setItem('userLoginMethod', 'jwt');
 
         return response;
@@ -66,6 +70,42 @@ export const AuthProvider = ({ children }) => {
       }
     } catch (error) {
       throw error;
+    }
+  };
+
+  const loginWithGoogle = async (email) => {
+    try {
+      const response = await ApiService.g_login(email);
+      if (response.success) {
+        setUser(response.data.user);
+
+        await AsyncStorage.setItem('userName', response.data.user.name || '');
+        await AsyncStorage.setItem('userPhone', response.data.user.phone || '');
+        await AsyncStorage.setItem('userEmail', response.data.user.email || '');
+        const rawRoles = response.data.user.role || '';
+        const rolesArray = rawRoles
+          .split(',')
+          .map((r) => r.trim())
+          .filter(Boolean);
+        await AsyncStorage.setItem('userRoles', JSON.stringify(rolesArray));
+        await AsyncStorage.setItem('userLoginMethod', 'google');
+
+        return response;
+      }
+      throw new Error(response.message);
+    } catch (error) {
+      throw error;
+    }
+  };
+
+  const selectIdentity = async (identity) => {
+    try {
+      setCurrentIdentity(identity);
+      await AsyncStorage.setItem('currentIdentity', identity || '');
+      setIsAuthenticated(true);
+    } catch (error) {
+      console.error('Error selecting identity:', error);
+      setIsAuthenticated(true);
     }
   };
 
@@ -86,8 +126,11 @@ export const AuthProvider = ({ children }) => {
     isAuthenticated,
     user,
     isLoading,
+    currentIdentity,
     login,
+    loginWithGoogle,
     logout,
+    selectIdentity,
     checkAuthStatus,
   };
 
