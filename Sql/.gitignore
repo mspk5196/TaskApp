@@ -1,1 +1,4 @@
-./
+# Ignore database files
+*.sql
+# Ignore database folders
+/sqls/
