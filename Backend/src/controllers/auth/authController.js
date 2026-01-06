@@ -69,7 +69,7 @@ exports.login = async (req, res) => {
     if (!user.password_hash) {
       return res.status(401).json({ success: false, message: 'Password not set for this account' });
     }
-
+    
     const passwordMatch = await bcrypt.compare(password, user.password_hash);
     if (!passwordMatch) {
       return res.status(401).json({ success: false, message: 'Incorrect password' });
@@ -390,5 +390,49 @@ exports.googleLogin = async (req, res) => {
   } catch (err) {
     console.error('Google login error:', err);
     return res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+// Get current authenticated user's profile
+exports.getProfile = async (req, res) => {
+  try {
+    const userId = req.user && req.user.id;
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: 'Unauthorized',
+      });
+    }
+
+    const user = await getUserWithIdentityById(userId);
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found',
+      });
+    }
+
+    const roles = user.roles || '';
+
+    return res.json({
+      success: true,
+      data: {
+        user: {
+          id: user.id,
+          name: user.name,
+          phone: null,
+          role: roles,
+          email: user.email,
+        },
+      },
+    });
+  } catch (error) {
+    console.error('Get profile error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Server error',
+    });
   }
 };

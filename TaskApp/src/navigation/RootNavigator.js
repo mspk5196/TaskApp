@@ -3,19 +3,28 @@ import { NavigationContainer } from '@react-navigation/native';
 import AuthNavigator from './AuthNavigator';
 import MainNavigator from './MainNavigator';
 import { useAuth } from '../context/AuthContext';
+import { StatusBar, View } from 'react-native';
+import Loader from '../components/common/Loader';
 
 const RootNavigator = () => {
-  const { isAuthenticated, isLoading } = useAuth();
+    const { isAuthenticated, isLoading } = useAuth();
 
-  if (isLoading) {
-    return null; // TODO: show splash/loader
-  }
+    if (isLoading) {
+        return (
+            <Loader/>
+        )
+    }
 
-  return (
-    <NavigationContainer>
-      {isAuthenticated ? <MainNavigator /> : <AuthNavigator />}
-    </NavigationContainer>
-  );
+    return (
+        <NavigationContainer>
+            <StatusBar
+                barStyle="dark-content"
+                backgroundColor="#fff"
+                translucent={false}
+            />
+            {isAuthenticated ? <MainNavigator /> : <AuthNavigator />}
+        </NavigationContainer>
+    );
 };
 
 export default RootNavigator;

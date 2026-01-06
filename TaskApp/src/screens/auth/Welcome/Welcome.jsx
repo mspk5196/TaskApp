@@ -91,7 +91,7 @@ const Welcome = () => {
           {/* Title with decorative elements */}
           <View style={styles.titleContainer}>
             <View style={styles.decorativeLine} />
-            <Text style={styles.title}>BIT SCHOOLS</Text>
+            <Text style={styles.title}>Task App</Text>
             <View style={styles.decorativeLine} />
           </View>
 

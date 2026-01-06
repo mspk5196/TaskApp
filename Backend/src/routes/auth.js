@@ -9,4 +9,7 @@ router.post('/refresh-token', authController.refreshToken);
 router.post('/logout', authController.logout);
 router.post('/google-login', authController.googleLogin);
 
+// Authenticated profile route
+router.get('/profile', authenticateToken, authController.getProfile);
+
 module.exports = router;

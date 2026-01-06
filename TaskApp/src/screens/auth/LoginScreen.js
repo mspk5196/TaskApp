@@ -13,7 +13,6 @@ import {
   Platform,
 } from 'react-native';
 import { TextInput } from 'react-native-paper';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { GoogleSignin } from '@react-native-google-signin/google-signin';
 import { useNavigation } from '@react-navigation/native';
@@ -23,7 +22,7 @@ import Loginimg from '../../assets/Login/loginimg.svg';
 import Separator from '../../assets/Login/separator.svg';
 import Googleicon from '../../assets/Login/google.svg';
 import styles from './loginsty';
-import { GOOGLE_ANDROID_CLIENT_ID } from '../../config/env';
+import { GOOGLE_WEB_CLIENT_ID } from '../../config/env';
 import useAuth from '../../hooks/useAuth';
 
 const LoginScreen = () => {
@@ -31,7 +30,7 @@ const LoginScreen = () => {
   const { login, loginWithGoogle } = useAuth();
   const passwordRef = useRef(null);
 
-  const [phoneNumber, setPhoneNumber] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [checked, setChecked] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -43,15 +42,15 @@ const LoginScreen = () => {
       return;
     }
 
-    if (!phoneNumber || !password) {
-      Alert.alert('Please enter both phone number and password');
+    if (!email || !password) {
+      Alert.alert('Please enter both email and password');
       return;
     }
 
     setIsLoading(true);
 
     try {
-      const response = await login(phoneNumber, password);
+      const response = await login(email, password);
       if (response?.success) {
         navigation.navigate('IdentitySelector');
       }
@@ -69,7 +68,7 @@ const LoginScreen = () => {
 
       GoogleSignin.configure({
         offlineAccess: true,
-        webClientId: GOOGLE_ANDROID_CLIENT_ID,
+        webClientId: GOOGLE_WEB_CLIENT_ID,
       });
 
       const hasPlayService = await GoogleSignin.hasPlayServices();
@@ -135,17 +134,17 @@ const LoginScreen = () => {
               <View style={styles.inputcontainer}>
                 <TextInput
                   style={styles.input}
-                  label="Mobile"
-                  value={phoneNumber}
-                  onChangeText={setPhoneNumber}
+                  label="Email"
+                  value={email}
+                  onChangeText={setEmail}
                   mode="outlined"
                   activeOutlineColor="#3B82F6"
                   outlineColor="#E2E8F0"
                   textColor="#1E293B"
-                  keyboardType="phone-pad"
+                  keyboardType="email-address"
+                  autoCapitalize="none"
                   returnKeyType="next"
                   onSubmitEditing={() => passwordRef.current?.focus()}
-                  blurOnSubmit={false}
                 />
                 <View style={styles.passwordContainer}>
                   <TextInput

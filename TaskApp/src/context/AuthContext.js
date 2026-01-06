@@ -1,6 +1,8 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import ApiService from '../services/api';
+import authService from '../services/auth.service';
+import useAuthStore from '../store/auth.store';
 
 const AuthContext = createContext();
 
@@ -17,6 +19,7 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [currentIdentity, setCurrentIdentity] = useState(null);
+  const { setUser: setStoreUser } = useAuthStore();
 
   useEffect(() => {
     checkAuthStatus();
@@ -26,23 +29,27 @@ export const AuthProvider = ({ children }) => {
     try {
       const isAuth = await ApiService.isAuthenticated();
       if (isAuth) {
-        const response = await ApiService.getProfile();
+        const response = await authService.getProfile();
         if (response.success) {
           setUser(response.data.user);
+          setStoreUser(response.data.user);
           setIsAuthenticated(true);
         } else {
           await ApiService.clearTokens();
           setIsAuthenticated(false);
           setUser(null);
+          setStoreUser(null);
         }
       } else {
         setIsAuthenticated(false);
         setUser(null);
+        setStoreUser(null);
       }
     } catch (error) {
       console.error('Auth check failed:', error);
       setIsAuthenticated(false);
       setUser(null);
+      setStoreUser(null);
     } finally {
       setIsLoading(false);
     }
@@ -50,9 +57,10 @@ export const AuthProvider = ({ children }) => {
 
   const login = async (email, password) => {
     try {
-      const response = await ApiService.login(email, password);
+      const response = await authService.login(email, password);
       if (response.success) {
         setUser(response.data.user);
+        setStoreUser(response.data.user);
         await AsyncStorage.setItem('userName', response.data.user.name || '');
         await AsyncStorage.setItem('userPhone', response.data.user.phone || '');
         await AsyncStorage.setItem('userEmail', response.data.user.email || '');
@@ -75,9 +83,10 @@ export const AuthProvider = ({ children }) => {
 
   const loginWithGoogle = async (email) => {
     try {
-      const response = await ApiService.g_login(email);
+      const response = await authService.googleLogin(email);
       if (response.success) {
         setUser(response.data.user);
+        setStoreUser(response.data.user);
 
         await AsyncStorage.setItem('userName', response.data.user.name || '');
         await AsyncStorage.setItem('userPhone', response.data.user.phone || '');
@@ -111,13 +120,15 @@ export const AuthProvider = ({ children }) => {
 
   const logout = async () => {
     try {
-      await ApiService.logout();
+      await authService.logout();
       await AsyncStorage.clear();
       setUser(null);
+      setStoreUser(null);
       setIsAuthenticated(false);
     } catch (error) {
       console.error('Logout error:', error);
       setUser(null);
+      setStoreUser(null);
       setIsAuthenticated(false);
     }
   };
